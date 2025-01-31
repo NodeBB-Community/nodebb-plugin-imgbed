@@ -7,9 +7,7 @@
     "lint": "standard",
     "lint:fix": "standard --fix",
     "test": "mocha test/test.js",
-    "posttest": "npm run lint",
-    "snyk-protect": "snyk protect",
-    "prepare": "npm run snyk-protect"
+    "posttest": "npm run lint"
   },
   "repository": {
     "type": "git",
