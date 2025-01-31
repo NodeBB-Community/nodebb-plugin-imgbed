@@ -1,22 +1,19 @@
 'use strict';
-console.log('top')
+
 define('admin/plugins/imgbed', ['settings', 'alerts'], function (settings, alerts) {
-		console.log('inside')
 	var Imgbed = {};
 
 	Imgbed.init = function () {
 		var wrapper = $('#imgbed_acp');
 	
 		settings.sync('imgbed', wrapper);
-		console.log('init done')
+		
 		$('#save').click(function (event) {
 			event.preventDefault();
 			// TODO clean and organize extensions
 			settings.persist('imgbed', wrapper, function persistImgbed() {
 				socket.emit('admin.settings.syncImgbed');
-			});
-			console.log('hero dero')
-			return false;
+			});	
 		});
 
 		$('#clearPostCache').click(function (event) {
