@@ -52,31 +52,6 @@
           </div>
         </div>
       </form>
-
-      <script type="text/javascript">
-        require(['settings'], function(settings) {
-          var wrapper = $('#imgbed_acp');
-          // [1]
-          settings.sync('imgbed', wrapper);
-          $('#save').click(function(event) {
-            event.preventDefault();
-            // TODO clean and organize extensions
-            settings.persist('imgbed', wrapper, function persistImgbed() {
-              socket.emit('admin.settings.syncImgbed');
-            })
-          });
-          $('#clearPostCache').click(function(event) {
-            event.preventDefault();
-            socket.emit('admin.settings.clearPostCache');
-            app.alert({
-              type: 'success',
-              alert_id: 'imgbed-post-cache-cleared',
-              title: 'Success',
-              message: 'Posts cache cleared successfully'
-            });
-          });
-        });
-      </script>
     </div>
   </div>
 </div>

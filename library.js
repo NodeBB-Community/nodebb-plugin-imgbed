@@ -136,7 +136,7 @@
 
   Imgbed.onLoad = function (params, callback) {
     function render (req, res, next) {
-      res.render('admin/plugins/imgbed')
+      res.render('admin/plugins/imgbed', {})
     }
 
     params.router.get('/admin/plugins/imgbed', params.middleware.admin.buildHeader, render)
