@@ -1,171 +1,135 @@
 /* global env:false */
+'use strict';
 
-(function (module) {
-  'use strict'
-  const { createLogger, format, transports } = require('winston')
-  const { combine, colorize, label, timestamp, printf } = format
-  const CacheLRU = require('cache-lru')
-  const Settings = require.main.require('./src/settings')
-  const Cache = require.main.require('./src/posts/cache')
-  const SocketAdmin = require.main.require('./src/socket.io/admin')
-  const CACHE_SIZE = 3
+const winston = require.main.require('winston');
+const CacheLRU = require('cache-lru');
+const Settings = require.main.require('./src/settings');
+const Cache = require.main.require('./src/posts/cache');
+const SocketAdmin = require.main.require('./src/socket.io/admin');
+const CACHE_SIZE = 3;
 
-  let dev = false
-  let log = console
+const Imgbed = module.exports;
 
-  var constants = Object.freeze({
-    name: 'Imgbed',
-    admin: {
-      route: '/plugins/imgbed',
-      icon: 'fa-th-large',
-      name: 'Imgbed'
-    },
-    namespace: 'nodebb-plugin-imgbed'
+const constants = Object.freeze({
+  name: 'Imgbed',
+  admin: {
+    route: '/plugins/imgbed',
+    icon: 'fa-th-large',
+    name: 'Imgbed'
+  },
+  namespace: 'nodebb-plugin-imgbed'
+})
+
+var defaultSettings = {
+  booleans: {
+    hasMarkdown: true
+  },
+  strings: {
+    extensions: 'jpg,jpeg,gif,gifv,png,svg',
+    parseMode: 'markdown'
+  }
+}
+
+let regex
+let preString
+let embedSyntax
+let localCache
+let settings
+
+Imgbed.init = function () {
+  settings = new Settings('imgbed', '0.2.0', defaultSettings, function () {
+    winston.debug('Settings loaded.')
   })
+  const userExt = settings.get('strings.extensions')
+  const parseMode = settings.get('strings.parseMode')
+  winston.debug(`User defined extensions are ${userExt}`)
+  winston.debug(`Parse mode is ${parseMode}`)
 
-  var defaultSettings = {
-    booleans: {
-      hasMarkdown: true
-    },
-    strings: {
-      extensions: 'jpg,jpeg,gif,gifv,png,svg',
-      parseMode: 'markdown'
-    }
+  let extensionsArr = (userExt && userExt.length > 0)
+    ? userExt.split(',')
+    : defaultSettings.strings.extensions.split(',')
+
+  extensionsArr = extensionsArr.map(str => str.trim())
+
+  const regexStr = '(?<url>https?:\\/\\/[^\\s]+\\/(?<filename>[\\w_0-9\\-\\.]+\\.(' + extensionsArr.join('|') + '))([^\\s]*)?)'
+
+  switch (parseMode) {
+    case 'html':
+      preString = 'src\\s*\\=\\s*\\"'
+      embedSyntax = '<img src="$<url>" alt="$<filename>" title="$<filename>">'  // eslint-disable-line
+      break
+    case 'bbcode':
+      preString = '\\[img[^\\]]*\\]'
+      embedSyntax = '[img alt="$<filename>" title="$<filename>"]$<url>[/img]' // eslint-disable-line
+      break
+    default: // markdown
+      preString = '\\('
+      embedSyntax = '![$<filename>]($<url>)'  // eslint-disable-line
+      break
   }
 
-  const Imgbed = {}
+  // declare regex as global and case-insensitive
+  regex = new RegExp('(?<!' + preString + '\\s*)' + regexStr, 'gi')
+  winston.info(`Regex recompiled: ${regexStr}`)
+  localCache = new CacheLRU()
+  localCache.limit(CACHE_SIZE)
+  winston.info(`Cache initialized to size ${CACHE_SIZE}`)
+}
 
-  let regex
-  let preString
-  let embedSyntax
-  let localCache
-  let settings
+Imgbed.parseRaw = async function (content) {
+  if (!content) {
+    return content;
+  }
+  let parsedContent = localCache.get(content)
+  if (!parsedContent) {
+    parsedContent = content.replace(regex, embedSyntax)
+    localCache.set(content, parsedContent)
+  }
 
-  Imgbed.init = function () {
-    dev = env === 'development'
+  return parsedContent;
+}
 
-    const logFormat = printf(({ level, message, label, timestamp }) => {
-      return `${timestamp} - ${level}: [${label}] ${message}`
+Imgbed.parse = async function (data) {
+  if (!data || !data.postData) {
+    return data;
+  }
+
+  data.postData.content = await Imgbed.parseRaw(data.postData.content);
+  return data;
+}
+
+Imgbed.onLoad = async function (params) {
+  const { router } = params;
+  const routeHelpers = require.main.require('./src/routes/helpers');
+
+  routeHelpers.setupAdminPageRoute(router, '/admin/plugins/imgbed', function (req, res) {
+    res.render('admin/plugins/imgbed', {
+      title: 'Imgbed',
+    });
+  });
+
+  Imgbed.init()
+}
+
+SocketAdmin.settings.syncImgbed = function (data) {
+  winston.debug('Syncing settings...')
+  settings.sync(Imgbed.init)
+}
+
+SocketAdmin.settings.clearPostCache = function (data) {
+  winston.debug('Clearing all posts from cache')
+  Cache.reset()
+  // SocketAdmin.emit('admin.settings.postCacheCleared', {});
+}
+
+Imgbed.admin = {
+  menu: function (customHeader) {
+    customHeader.plugins.push({
+      route: constants.admin.route,
+      icon: constants.admin.icon,
+      name: constants.admin.name
     })
-
-    const formats = []
-    if (dev) {
-      formats.push(colorize())
-    }
-    formats.push(
-      timestamp(),
-      label({ label: 'plugin:Imgbed' }),
-      logFormat
-    )
-    log = createLogger({
-      level: dev ? 'debug' : 'info',
-      format: combine(...formats),
-      transports: [
-        new transports.Console()
-      ]
-    })
-    settings = new Settings('imgbed', '0.2.0', defaultSettings, function () {
-      log.debug('Settings loaded.')
-    })
-    const userExt = settings.get('strings.extensions')
-    const parseMode = settings.get('strings.parseMode')
-    log.debug(`User defined extensions are ${userExt}`)
-    log.debug(`Parse mode is ${parseMode}`)
-
-    let extensionsArr = (userExt && userExt.length > 0)
-      ? userExt.split(',')
-      : defaultSettings.strings.extensions.split(',')
-
-    extensionsArr = extensionsArr.map(function (str) {
-      return str.trim()
-    })
-
-    const regexStr = '(?<url>https?:\\/\\/[^\\s]+\\/(?<filename>[\\w_0-9\\-\\.]+\\.(' + extensionsArr.join('|') + '))([^\\s]*)?)'
-
-    switch (parseMode) {
-      case 'html':
-        preString = 'src\\s*\\=\\s*\\"'
-        embedSyntax = '<img src="$<url>" alt="$<filename>" title="$<filename>">'  // eslint-disable-line
-        break
-      case 'bbcode':
-        preString = '\\[img[^\\]]*\\]'
-        embedSyntax = '[img alt="$<filename>" title="$<filename>"]$<url>[/img]' // eslint-disable-line
-        break
-      default: // markdown
-        preString = '\\('
-        embedSyntax = '![$<filename>]($<url>)'  // eslint-disable-line
-        break
-    }
-
-    // declare regex as global and case-insensitive
-    regex = new RegExp('(?<!' + preString + '\\s*)' + regexStr, 'gi')
-    log.info(`Regex recompiled: ${regexStr}`)
-    localCache = new CacheLRU()
-    localCache.limit(CACHE_SIZE)
-    log.info(`Cache initialized to size ${CACHE_SIZE}`)
+    return customHeader;
   }
+}
 
-  Imgbed.parseRaw = function (content, callback) {
-    if (!content) {
-      return callback(null, content)
-    }
-    let parsedContent = localCache.get(content)
-    if (!parsedContent) {
-      log.debug('Cache miss')
-
-      parsedContent = content.replace(regex, embedSyntax)
-      localCache.set(content, parsedContent)
-    }
-
-    callback(null, parsedContent)
-  }
-
-  Imgbed.parse = function (data, callback) {
-    if (!data || !data.postData) {
-      return callback(null, data)
-    }
-
-    Imgbed.parseRaw(data.postData.content, function (err, content) {
-      if (err) {
-        callback(err, data)
-      }
-      data.postData.content = content
-      callback(null, data)
-    })
-  }
-
-  Imgbed.onLoad = function (params, callback) {
-    function render (req, res, next) {
-      res.render('admin/plugins/imgbed', {})
-    }
-
-    params.router.get('/admin/plugins/imgbed', params.middleware.admin.buildHeader, render)
-    params.router.get('/api/admin/plugins/imgbed', render)
-
-    Imgbed.init()
-    callback()
-  }
-
-  SocketAdmin.settings.syncImgbed = function (data) {
-    log.debug('Syncing settings...')
-    settings.sync(Imgbed.init)
-  }
-
-  SocketAdmin.settings.clearPostCache = function (data) {
-    log.debug('Clearing all posts from cache')
-    Cache.reset()
-    // SocketAdmin.emit('admin.settings.postCacheCleared', {});
-  }
-
-  Imgbed.admin = {
-    menu: function (customHeader, callback) {
-      customHeader.plugins.push({
-        route: constants.admin.route,
-        icon: constants.admin.icon,
-        name: constants.admin.name
-      })
-      callback(null, customHeader)
-    }
-  }
-  module.exports = Imgbed
-}(module))

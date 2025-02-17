@@ -11,7 +11,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/bdharrington7/nodebb-plugin-imgbed.git"
+    "url": "https://github.com/NodeBB-Community/nodebb-plugin-imgbed.git"
   },
   "keywords": [
     "nodebb",
@@ -23,12 +23,11 @@
   "author": "Brian Harrington <BDHarrington7@gmail.com> (https://bdharrington.com/)",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/bdharrington7/nodebb-plugin-imgbed/issues"
+    "url": "https://github.com/NodeBB-Community/nodebb-plugin-imgbed/issues"
   },
   "dependencies": {
     "cache-lru": "^1.1.10",
-    "snyk": "^1.667.0",
-    "winston": "^3.2.1"
+    "snyk": "^1.667.0"
   },
   "devDependencies": {
     "mocha": "^8.1.1",
@@ -37,10 +36,10 @@
     "standard": "^14.3.4"
   },
   "nbbpm": {
-    "compatibility": "2.x"
+    "compatibility": "^3.2.0"
   },
   "engines": {
-    "node": ">=10"
+    "node": ">=18"
   },
   "snyk": true
 }
